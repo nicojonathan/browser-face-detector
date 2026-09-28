@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Face Detection</title>
+
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <!-- Header -->
+      <header class="header">
+        <div class="brand">
+          <div class="brand-icon">◉</div>
+          <div>
+            <h1>FaceScan</h1>
+            <span>Identity Capture</span>
+          </div>
+        </div>
+
+        <div class="status">
+          <span class="status-dot"></span>
+          Camera Ready
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <section class="content">
+        <div class="intro">
+          <span class="eyebrow">PHOTO CAPTURE</span>
+
+          <h2>Capture your profile photo</h2>
+
+          <p>
+            Position your face inside the guide and look directly at the camera.
+            Your photo will be captured automatically when you are ready.
+          </p>
+        </div>
+
+        <!-- Camera -->
+        <div class="camera-container">
+          <div class="camera">
+            <!-- Camera video will eventually go here -->
+            <video id="camera" autoplay playsinline muted></video>
+
+            <!-- Temporary placeholder -->
+            <div class="camera-placeholder">
+              <div class="placeholder-icon">◉</div>
+              <span>Camera preview</span>
+            </div>
+
+            <!-- Face Guide -->
+            <div class="face-guide">
+              <div class="corner top-left"></div>
+              <div class="corner top-right"></div>
+              <div class="corner bottom-left"></div>
+              <div class="corner bottom-right"></div>
+
+              <div class="scan-line"></div>
+            </div>
+
+            <!-- Detection Status -->
+            <div class="detection-status">
+              <span class="detection-icon"></span>
+              <span id="detection-message"> Looking for a face... </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="instructions">
+          <div class="instruction">
+            <div class="instruction-number">01</div>
+            <div>
+              <strong>Face the camera</strong>
+              <span>Look directly at the camera.</span>
+            </div>
+          </div>
+
+          <div class="instruction">
+            <div class="instruction-number">02</div>
+            <div>
+              <strong>Stay inside the frame</strong>
+              <span>Keep your face within the guide.</span>
+            </div>
+          </div>
+
+          <div class="instruction">
+            <div class="instruction-number">03</div>
+            <div>
+              <strong>Wait for capture</strong>
+              <span>Your photo will be captured automatically.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <span>Face detection runs locally in your browser.</span>
+
+        <span class="secure">
+          <span>●</span>
+          Secure
+        </span>
+      </footer>
+    </main>
+
+    <!-- TensorFlow.js runtime -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+
+    <!-- TensorFlow.js face detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection@1.0.3/dist/face-detection.min.js"></script>
+
+    <!-- Application -->
+    <script type="module" src="script.js"></script>
+  </body>
+</html>

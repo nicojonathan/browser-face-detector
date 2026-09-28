@@ -355,8 +355,16 @@ function capturePhoto() {
 
   const image = canvas.toDataURL("image/jpeg", 0.92);
 
+  window.parent.postMessage(
+    {
+      type: "face-captured",
+      photo: image,
+    },
+    "*",
+  );
+
   captured = true;
-  downloadCapturedImage(image);
+  //   downloadCapturedImage(image);
   stopCamera();
 
   scanLine.style.display = "none";

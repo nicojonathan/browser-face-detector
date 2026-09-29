@@ -15,6 +15,158 @@ const scanLine = document.querySelector(".scan-line");
 const cameraStatus = document.querySelector(".status");
 
 // =========================================
+// LANGUAGE
+// =========================================
+
+const translations = {
+  "Face Detection": "Deteksi Wajah",
+  "By Nico Jonathan Setiawan": "Oleh Nico Jonathan Setiawan",
+  "PHOTO CAPTURE": "PENGAMBILAN FOTO",
+  "Capture your profile photo": "Ambil foto profil Anda",
+
+  "Position your face inside the guide and look directly at the camera. Your photo will be captured automatically when you are ready.":
+    "Posisikan wajah Anda di dalam bingkai dan lihat langsung ke kamera. Foto Anda akan diambil secara otomatis saat Anda siap.",
+
+  "Camera preview": "Pratinjau kamera",
+  "Face the camera": "Hadapkan wajah ke kamera",
+  "Look directly at the camera.": "Lihat langsung ke kamera.",
+  "Stay inside the frame": "Tetap di dalam bingkai",
+  "Keep your face within the guide.":
+    "Pastikan wajah Anda berada di dalam bingkai.",
+  "Wait for capture": "Tunggu pengambilan foto",
+  "Your photo will be captured automatically.":
+    "Foto Anda akan diambil secara otomatis.",
+
+  "Face detection runs locally in your browser.":
+    "Deteksi wajah berjalan secara lokal di browser Anda.",
+  Secure: "Aman",
+
+  "Camera Ready": "Kamera siap",
+  "Camera ready": "Kamera siap",
+  Initializing: "Memulai",
+  Unavailable: "Tidak tersedia",
+  "Requesting camera": "Meminta akses kamera",
+  "Camera stopped": "Kamera berhenti",
+  "Detection stopped": "Deteksi berhenti",
+
+  "Loading face detection...": "Memuat deteksi wajah...",
+  "Allow camera access to continue": "Izinkan akses kamera untuk melanjutkan",
+  "Looking for a face...": "Mencari wajah...",
+  "No face detected": "Tidak ada wajah terdeteksi",
+  "Only one face should be visible": "Pastikan hanya satu wajah yang terlihat",
+  "Unable to read face position": "Tidak dapat membaca posisi wajah",
+  "Please move closer": "Silakan mendekat ke kamera",
+  "Please center your face": "Posisikan wajah Anda di tengah",
+  "Face detected — hold still": "Wajah terdeteksi — jangan bergerak",
+  "Photo captured successfully": "Foto berhasil diambil",
+
+  "Camera disconnected. Reload to try again.":
+    "Kamera terputus. Muat ulang halaman untuk mencoba lagi.",
+  "Detection failed. Reload to try again.":
+    "Deteksi gagal. Muat ulang halaman untuk mencoba lagi.",
+  "Unable to initialize camera": "Tidak dapat mengaktifkan kamera",
+  "TensorFlow.js libraries failed to load.":
+    "Pustaka TensorFlow.js gagal dimuat.",
+  "Camera access requires HTTPS or localhost and a supported browser.":
+    "Akses kamera memerlukan HTTPS atau localhost dan browser yang mendukung.",
+  "Camera permission denied. Allow camera access and reload.":
+    "Izin kamera ditolak. Izinkan akses kamera lalu muat ulang halaman.",
+  "No camera found.": "Kamera tidak ditemukan.",
+  "Camera is unavailable or in use by another application.":
+    "Kamera tidak tersedia atau sedang digunakan aplikasi lain.",
+};
+
+let currentLanguage = "en";
+
+try {
+  const savedLanguage = localStorage.getItem("facescan-language");
+
+  if (savedLanguage === "en" || savedLanguage === "id") {
+    currentLanguage = savedLanguage;
+  }
+} catch {
+  // Continue normally if browser storage is unavailable.
+}
+
+let currentDetectionText = "Looking for a face...";
+let currentDetectionType = "waiting";
+let currentCameraText = "Camera Ready";
+
+function translate(text) {
+  return currentLanguage === "id" ? (translations[text] ?? text) : text;
+}
+
+// Store the original English text once.
+const staticTextElements = [
+  ...document.querySelectorAll(`
+    title,
+    .brand h1 + span,
+    .eyebrow,
+    .intro h2,
+    .intro p,
+    .camera-placeholder > span,
+    .instruction strong,
+    .instruction strong + span,
+    .footer > span:not(.secure)
+  `),
+].map((element) => ({
+  element,
+  text: element.textContent.trim().replace(/\s+/g, " "),
+}));
+
+// Wrap only the footer label so its existing icon is preserved.
+const secureElement = document.querySelector(".secure");
+let secureLabel = null;
+
+if (secureElement) {
+  for (const node of [...secureElement.childNodes]) {
+    if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+      secureLabel = document.createElement("span");
+      secureLabel.textContent = node.textContent.trim();
+      node.replaceWith(secureLabel);
+      break;
+    }
+  }
+}
+
+function applyLanguage(language) {
+  currentLanguage = language === "id" ? "id" : "en";
+
+  document.documentElement.lang = currentLanguage;
+
+  for (const { element, text } of staticTextElements) {
+    element.textContent = translate(text);
+  }
+
+  if (secureLabel) {
+    secureLabel.textContent = translate("Secure");
+  }
+
+  document.querySelectorAll("[data-language]").forEach((button) => {
+    button.setAttribute(
+      "aria-pressed",
+      String(button.dataset.language === currentLanguage),
+    );
+  });
+
+  // Re-render the current messages, including after capture or an error.
+  setStatus(currentDetectionText, currentDetectionType);
+  setCameraStatus(currentCameraText);
+
+  try {
+    localStorage.setItem("facescan-language", currentLanguage);
+  } catch {
+    // The toggle still works without saving the preference.
+  }
+}
+
+document.querySelectorAll("[data-language]").forEach((button) => {
+  button.addEventListener("click", () => {
+    applyLanguage(button.dataset.language);
+  });
+});
+
+// =========================================
 // CONFIGURATION
 // =========================================
 
@@ -40,7 +192,10 @@ let lastVideoTime = -1;
 // =========================================
 
 function setStatus(text, type = "waiting") {
-  message.textContent = text;
+  currentDetectionText = text;
+  currentDetectionType = type;
+
+  message.textContent = translate(text);
 
   const colors = {
     waiting: "#fbbf24",
@@ -63,12 +218,36 @@ function setStatus(text, type = "waiting") {
 }
 
 function setCameraStatus(text) {
+  currentCameraText = text;
+
   if (!cameraStatus) return;
 
   const dot = document.createElement("span");
   dot.className = "status-dot";
 
-  cameraStatus.replaceChildren(dot, document.createTextNode(` ${text}`));
+  cameraStatus.replaceChildren(
+    dot,
+    document.createTextNode(` ${translate(text)}`),
+  );
+}
+
+function getCameraErrorText(error) {
+  const messages = {
+    NotAllowedError:
+      "Camera permission denied. Allow camera access and reload.",
+    NotFoundError: "No camera found.",
+    NotReadableError: "Camera is unavailable or in use by another application.",
+  };
+
+  if (messages[error?.name]) {
+    return messages[error.name];
+  }
+
+  if (Object.prototype.hasOwnProperty.call(translations, error?.message)) {
+    return error.message;
+  }
+
+  return "Unable to initialize camera";
 }
 
 // =========================================
@@ -129,7 +308,7 @@ async function initializeFaceDetector() {
 
     if (!pageClosed) {
       setCameraStatus("Unavailable");
-      setStatus(error.message || "Unable to initialize camera", "error");
+      setStatus(getCameraErrorText(error), "error");
     }
   }
 }
@@ -442,4 +621,5 @@ window.addEventListener("pageshow", (event) => {
 // START
 // =========================================
 
+applyLanguage(currentLanguage);
 initializeFaceDetector();

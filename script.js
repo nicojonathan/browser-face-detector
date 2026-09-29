@@ -538,6 +538,7 @@ function capturePhoto() {
     {
       type: "face-captured",
       photo: image,
+      source: "facescan",
     },
     "*",
   );

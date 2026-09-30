@@ -260,6 +260,19 @@ body {
   object-fit: cover;
   transform: scaleX(-1);
   opacity: 0;
+
+  /* Show only the oval area matching the face guide. */
+  -webkit-mask-image: radial-gradient(
+    ellipse 22% 35% at 50% 46%,
+    #000 99%,
+    transparent 100%
+  );
+
+  mask-image: radial-gradient(
+    ellipse 22% 35% at 50% 46%,
+    #000 99%,
+    transparent 100%
+  );
 }
 
 /* =========================================
@@ -504,6 +517,34 @@ body {
 ========================================= */
 
 @media (max-width: 700px) {
+  #camera {
+    clip-path: none;
+
+    -webkit-mask-image: radial-gradient(
+      ellipse 40% 42% at 50% 46%,
+      #000 99%,
+      transparent 100%
+    );
+
+    mask-image: radial-gradient(
+      ellipse 40% 42% at 50% 46%,
+      #000 99%,
+      transparent 100%
+    );
+  }
+
+  .face-guide {
+    left: 50%;
+    top: 46%;
+    width: 80%;
+    height: 84%;
+    border-radius: 50%;
+  }
+
+  .face-guide .corner {
+    display: none;
+  }
+
   .app {
     border-inline: none;
   }
@@ -520,10 +561,6 @@ body {
   .status {
     padding: 6px 8px;
     font-size: 11px;
-  }
-
-  .content {
-    padding: 32px 20px;
   }
 
   .intro {

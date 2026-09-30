@@ -624,3 +624,18 @@ window.addEventListener("pageshow", (event) => {
 
 applyLanguage(currentLanguage);
 initializeFaceDetector();
+
+function sendHeight() {
+  const height = document.documentElement.scrollHeight;
+
+  window.parent.postMessage(
+    {
+      type: "iframe-height",
+      height: height,
+    },
+    "*",
+  );
+}
+
+window.addEventListener("load", sendHeight);
+window.addEventListener("resize", sendHeight);

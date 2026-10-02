@@ -19,10 +19,11 @@ const cameraStatus = document.querySelector(".status");
 // =========================================
 
 const translations = {
+  "I'm ready": "Saya siap",
   "Face Detection": "Deteksi Wajah",
   "By Nico Jonathan Setiawan": "Oleh Nico Jonathan Setiawan",
   "PHOTO CAPTURE": "PENGAMBILAN FOTO",
-  "Capture your profile photo": "Ambil foto profil Anda",
+  "Capture a photo of your face": "Ambil foto wajah Anda",
 
   "Position your face inside the guide and look directly at the camera. Your photo will be captured automatically when you are ready.":
     "Posisikan wajah Anda di dalam bingkai dan lihat langsung ke kamera. Foto Anda akan diambil secara otomatis saat Anda siap.",
@@ -107,7 +108,8 @@ const staticTextElements = [
     .camera-placeholder > span,
     .instruction strong,
     .instruction strong + span,
-    .footer > span:not(.secure)
+    .footer > span:not(.secure),
+    #btnReady
   `),
 ].map((element) => ({
   element,
@@ -619,23 +621,111 @@ window.addEventListener("pageshow", (event) => {
 });
 
 // =========================================
-// START
+// IFRAME HEIGHT
 // =========================================
 
-applyLanguage(currentLanguage);
-initializeFaceDetector();
+// Replace with your Laravel application's exact origin.
+// Example for development: "http://localhost:8000"
+// const PARENT_ORIGIN = "https://your-laravel-domain.com";
 
-function sendHeight() {
-  const height = document.documentElement.scrollHeight;
+const app = document.querySelector(".app");
 
-  window.parent.postMessage(
-    {
-      type: "iframe-height",
-      height: height,
-    },
-    "*",
-  );
+let heightFrame = null;
+let lastSentHeight = null;
+let forceHeightUpdate = false;
+
+function sendHeight(force = false) {
+  forceHeightUpdate = forceHeightUpdate || force;
+
+  if (heightFrame !== null) return;
+
+  heightFrame = requestAnimationFrame(() => {
+    heightFrame = null;
+
+    // Measure the content rather than the iframe viewport.
+    // This allows the iframe to shrink when instructions disappear.
+    const height = Math.ceil(
+      Math.max(app.getBoundingClientRect().height, app.scrollHeight),
+    );
+
+    const shouldSend =
+      height > 0 && (forceHeightUpdate || height !== lastSentHeight);
+
+    forceHeightUpdate = false;
+
+    if (!shouldSend) return;
+
+    lastSentHeight = height;
+
+    window.parent.postMessage(
+      {
+        type: "iframe-height",
+        height,
+      },
+      "*",
+    );
+  });
 }
 
-window.addEventListener("load", sendHeight);
-window.addEventListener("resize", sendHeight);
+// window.addEventListener("message", (event) => {
+//   if (event.origin !== PARENT_ORIGIN || event.source !== window.parent) {
+//     return;
+//   }
+
+//   if (event.data?.type === "request-height") {
+//     sendHeight(true);
+//   }
+// });
+
+const heightObserver = new ResizeObserver(() => sendHeight());
+heightObserver.observe(app);
+
+window.addEventListener("load", () => sendHeight(true));
+window.addEventListener("resize", () => sendHeight());
+
+if (document.fonts) {
+  document.fonts.ready.then(() => sendHeight());
+}
+
+// =========================================
+// SCREEN SWITCHING
+// =========================================
+
+const instructionPage = document.getElementById("instructionPage");
+const cameraPage = document.getElementById("cameraPage");
+const btnReady = document.getElementById("btnReady");
+
+const header = document.querySelector(".header");
+const footer = document.querySelector(".footer");
+
+let cameraStepStarted = false;
+
+btnReady.addEventListener("click", async () => {
+  if (cameraStepStarted || pageClosed) return;
+
+  cameraStepStarted = true;
+  btnReady.disabled = true;
+
+  instructionPage.hidden = true;
+  cameraPage.hidden = false;
+
+  // Wait for the camera section to become visible.
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  sendHeight(true);
+
+  // Your existing function already handles initialization errors.
+  await initializeFaceDetector();
+
+  sendHeight(true);
+});
+
+// =========================================
+// START — INSTRUCTIONS ONLY
+// =========================================
+
+instructionPage.hidden = false;
+cameraPage.hidden = true;
+
+applyLanguage(currentLanguage);
+sendHeight(true);

@@ -42,12 +42,11 @@
       </header>
 
       <!-- Main Content -->
-      <!-- Step 1: Instructions -->
-      <section class="content" id="instructionPage">
+      <section class="content">
         <div class="intro">
           <span class="eyebrow">PHOTO CAPTURE</span>
 
-          <h2>Capture a photo of your face</h2>
+          <h2>Capture your profile photo</h2>
 
           <p>
             Position your face inside the guide and look directly at the camera.
@@ -55,6 +54,37 @@
           </p>
         </div>
 
+        <!-- Camera -->
+        <div class="camera-container">
+          <div class="camera">
+            <!-- Camera video will eventually go here -->
+            <video id="camera" autoplay playsinline muted></video>
+
+            <!-- Temporary placeholder -->
+            <div class="camera-placeholder">
+              <div class="placeholder-icon">◉</div>
+              <span>Camera preview</span>
+            </div>
+
+            <!-- Face Guide -->
+            <div class="face-guide">
+              <div class="corner top-left"></div>
+              <div class="corner top-right"></div>
+              <div class="corner bottom-left"></div>
+              <div class="corner bottom-right"></div>
+
+              <div class="scan-line"></div>
+            </div>
+
+            <!-- Detection Status -->
+            <div class="detection-status">
+              <span class="detection-icon"></span>
+              <span id="detection-message"> Looking for a face... </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Instructions -->
         <div class="instructions">
           <div class="instruction">
             <div class="instruction-number">01</div>
@@ -77,38 +107,6 @@
             <div>
               <strong>Wait for capture</strong>
               <span>Your photo will be captured automatically.</span>
-            </div>
-          </div>
-        </div>
-
-        <button type="button" class="ready-button" id="btnReady">
-          I'm ready
-        </button>
-      </section>
-
-      <!-- Step 2: Camera only -->
-      <section class="content" id="cameraPage" hidden>
-        <div class="camera-container">
-          <div class="camera">
-            <video id="camera" autoplay playsinline muted></video>
-
-            <div class="camera-placeholder">
-              <div class="placeholder-icon">◉</div>
-              <span>Camera preview</span>
-            </div>
-
-            <div class="face-guide">
-              <div class="corner top-left"></div>
-              <div class="corner top-right"></div>
-              <div class="corner bottom-left"></div>
-              <div class="corner bottom-right"></div>
-
-              <div class="scan-line"></div>
-            </div>
-
-            <div class="detection-status" role="status">
-              <span class="detection-icon"></span>
-              <span id="detection-message">Looking for a face...</span>
             </div>
           </div>
         </div>

@@ -178,7 +178,7 @@ body {
   flex-direction: column;
   align-items: center;
 
-  padding: 44px 32px 40px;
+  padding: 34px 32px 40px;
 }
 
 .intro {
@@ -218,11 +218,48 @@ body {
   line-height: 1.65;
 }
 
+/* Ensure hidden sections stay hidden despite existing display rules. */
+[hidden] {
+  display: none !important;
+}
+
+.ready-button {
+  display: block;
+  width: min(720px, 100%);
+  margin-top: 24px;
+  padding: 14px 20px;
+
+  border: 0;
+  border-radius: 12px;
+
+  background: #2563eb;
+  color: #fff;
+
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ready-button:hover {
+  background: #1d4ed8;
+}
+
+.ready-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ready-button:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 3px;
+}
+
 /* =========================================
    CAMERA CARD
 ========================================= */
 
 .camera-container {
+  margin-top: 25px;
   width: min(500px, 100%);
   padding: 8px;
 
@@ -239,7 +276,7 @@ body {
   position: relative;
 
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 4;
 
   overflow: hidden;
   isolation: isolate;
@@ -263,13 +300,13 @@ body {
 
   /* Show only the oval area matching the face guide. */
   -webkit-mask-image: radial-gradient(
-    ellipse 22% 35% at 50% 46%,
+    ellipse 27% 30% at 50% 46%,
     #000 99%,
     transparent 100%
   );
 
   mask-image: radial-gradient(
-    ellipse 22% 35% at 50% 46%,
+    ellipse 27% 30% at 50% 46%,
     #000 99%,
     transparent 100%
   );
@@ -321,13 +358,14 @@ body {
   left: 50%;
   top: 46%;
 
-  width: 44%;
-  height: 70%;
+  width: 54%;
+  height: 60%;
 
+  box-sizing: border-box;
   transform: translate(-50%, -50%);
 
   border: 1px dashed rgb(255 255 255 / 55%);
-  border-radius: 46%;
+  border-radius: 50%;
 
   pointer-events: none;
 }
@@ -521,24 +559,34 @@ body {
     clip-path: none;
 
     -webkit-mask-image: radial-gradient(
-      ellipse 40% 42% at 50% 46%,
+      ellipse 32% 35% at 50% 46%,
       #000 99%,
       transparent 100%
     );
 
     mask-image: radial-gradient(
-      ellipse 40% 42% at 50% 46%,
+      ellipse 32% 35% at 50% 46%,
       #000 99%,
       transparent 100%
     );
   }
 
   .face-guide {
+    position: absolute;
+
     left: 50%;
     top: 46%;
-    width: 80%;
-    height: 84%;
+
+    width: 64%;
+    height: 70%;
+
+    box-sizing: border-box;
+    transform: translate(-50%, -50%);
+
+    border: 1px dashed rgb(255 255 255 / 55%);
     border-radius: 50%;
+
+    pointer-events: none;
   }
 
   .face-guide .corner {

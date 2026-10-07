@@ -1,6 +1,6 @@
-// TensorFlow.js and faceDetection are loaded by the HTML script tags.
+// TensorFlow.js and faceLandmarksDetection are loaded by the HTML script tags.
 const tf = window.tf;
-const faceDetection = window.faceDetection;
+const faceLandmarksDetection = window.faceLandmarksDetection;
 
 // =========================================
 // DOM ELEMENTS
@@ -66,8 +66,8 @@ const translations = {
   "Detection failed. Reload to try again.":
     "Deteksi gagal. Muat ulang halaman untuk mencoba lagi.",
   "Unable to initialize camera": "Tidak dapat mengaktifkan kamera",
-  "TensorFlow.js libraries failed to load.":
-    "Pustaka TensorFlow.js gagal dimuat.",
+
+  "Libraries failed to load.": "Pustaka gagal dimuat.",
   "Camera access requires HTTPS or localhost and a supported browser.":
     "Akses kamera memerlukan HTTPS atau localhost dan browser yang mendukung.",
   "Camera permission denied. Allow camera access and reload.":
@@ -96,6 +96,38 @@ let currentCameraText = "Camera Ready";
 function translate(text) {
   return currentLanguage === "id" ? (translations[text] ?? text) : text;
 }
+
+// Update the existing HTML instructions without changing its layout.
+document.querySelector(".intro p").textContent =
+  "Position your face inside the guide. Keep your eyes open, then blink when prompted. Your photo will be captured after your eyes reopen.";
+
+document.querySelectorAll(".instruction strong")[2].textContent =
+  "Blink when prompted";
+
+document.querySelectorAll(".instruction strong + span")[2].textContent =
+  "Close both eyes briefly, then open them.";
+
+Object.assign(translations, {
+  "Position your face inside the guide. Keep your eyes open, then blink when prompted. Your photo will be captured after your eyes reopen.":
+    "Posisikan wajah di dalam bingkai. Buka mata, lalu berkedip saat diminta. Foto diambil setelah mata terbuka kembali.",
+
+  "Blink when prompted": "Berkedip saat diminta",
+  "Close both eyes briefly, then open them.":
+    "Tutup kedua mata sebentar, lalu buka kembali.",
+  "Keep both eyes open — hold still": "Buka kedua mata — jangan bergerak",
+  "Blink both eyes now": "Kedipkan kedua mata sekarang",
+  "Open both eyes again": "Buka kembali kedua mata",
+  "Blink detected — hold still": "Kedipan terdeteksi — jangan bergerak",
+  "Please move back slightly": "Silakan mundur sedikit",
+  "Keep your face upright and look at the camera":
+    "Tegakkan wajah dan lihat ke kamera",
+  "Unable to read eye landmarks": "Titik mata tidak terbaca",
+  "Loading Liveness Detection Model...": "Memuat Model Deteksi Liveness...",
+  "Time remaining": "Waktu tersisa",
+  "Seconds remaining": "Detik tersisa",
+  "Time is up. Reload to try again.":
+    "Waktu habis. Muat ulang halaman untuk mencoba lagi.",
+});
 
 // Store the original English text once.
 const staticTextElements = [
@@ -136,6 +168,13 @@ function applyLanguage(language) {
 
   document.documentElement.lang = currentLanguage;
 
+  document.getElementById("timerCaption").textContent =
+    translate("Time remaining");
+
+  document
+    .querySelector(".timer-ring")
+    .setAttribute("aria-label", translate("Seconds remaining"));
+
   for (const { element, text } of staticTextElements) {
     element.textContent = translate(text);
   }
@@ -151,7 +190,7 @@ function applyLanguage(language) {
     );
   });
 
-  // Re-render the current messages, including after capture or an error.
+  // Re-render current messages, including after capture or an error.
   setStatus(currentDetectionText, currentDetectionType);
   setCameraStatus(currentCameraText);
 
@@ -173,10 +212,9 @@ document.querySelectorAll("[data-language]").forEach((button) => {
 // =========================================
 
 const REQUIRED_STABLE_TIME = 700;
-const MIN_FACE_SIZE = 0.25;
 
 // Must be greater than 1 to detect and reject multiple faces.
-const MAX_FACES = 5;
+const MAX_FACES = 2;
 
 let faceDetector = null;
 let stream = null;
@@ -188,6 +226,272 @@ let pageClosed = false;
 let detecting = false;
 let animationFrameId = null;
 let lastVideoTime = -1;
+
+// Starting thresholds, not universal biometric constants.
+// Validate these values on your target devices.
+const BLINK = {
+  openEAR: 0.23,
+  closedEAR: 0.17,
+  stableMs: REQUIRED_STABLE_TIME,
+  minClosedMs: 60,
+  maxClosedMs: 1500,
+  reopenMs: 180,
+  challengeMs: 10000,
+  maxFrameGapMs: 500,
+};
+
+let blinkPhase = "prepare";
+let promptedAt = null;
+let closedAt = null;
+let reopenedAt = null;
+let lastEyeFrameAt = null;
+let previousFace = null;
+let visibilityEpoch = 0;
+
+const inferenceFrame = document.createElement("canvas");
+const inferenceContext = inferenceFrame.getContext("2d");
+
+function resetBlink() {
+  validSince = null;
+  blinkPhase = "prepare";
+  promptedAt = closedAt = reopenedAt = lastEyeFrameAt = null;
+  previousFace = null;
+}
+
+// =========================================
+// EYE ASPECT RATIO
+// =========================================
+
+function eyeAspectRatio(points, indices) {
+  const p = indices.map((i) => points[i]);
+
+  if (p.some((v) => !v || !Number.isFinite(v.x) || !Number.isFinite(v.y))) {
+    return NaN;
+  }
+
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  const width = distance(p[0], p[3]);
+
+  if (width < 3) return NaN;
+
+  return (distance(p[1], p[5]) + distance(p[2], p[4])) / (2 * width);
+}
+
+// =========================================
+// BLINK STATE MACHINE
+// =========================================
+
+// Only a complete open -> closed -> open sequence can pass.
+function advanceBlink(leftEAR, rightEAR, now) {
+  if (lastEyeFrameAt !== null && now - lastEyeFrameAt > BLINK.maxFrameGapMs) {
+    resetBlink();
+  }
+
+  lastEyeFrameAt = now;
+
+  const open = leftEAR >= BLINK.openEAR && rightEAR >= BLINK.openEAR;
+
+  const closed = leftEAR <= BLINK.closedEAR && rightEAR <= BLINK.closedEAR;
+
+  if (promptedAt !== null && now - promptedAt > BLINK.challengeMs) {
+    resetBlink();
+  }
+
+  if (blinkPhase === "prepare") {
+    if (!open) {
+      validSince = null;
+    } else if (validSince === null) {
+      validSince = now;
+    }
+
+    if (validSince !== null && now - validSince >= BLINK.stableMs) {
+      blinkPhase = "waiting-close";
+      promptedAt = now;
+    }
+
+    setStatus(
+      blinkPhase === "prepare"
+        ? "Keep both eyes open — hold still"
+        : "Blink both eyes now",
+    );
+  } else if (blinkPhase === "waiting-close") {
+    setStatus("Blink both eyes now");
+
+    if (closed) {
+      closedAt = now;
+      blinkPhase = "waiting-open";
+      setStatus("Open both eyes again");
+    }
+  } else if (blinkPhase === "waiting-open") {
+    const elapsed = now - closedAt;
+
+    if (elapsed > BLINK.maxClosedMs) {
+      resetBlink();
+      setStatus("Keep both eyes open — hold still");
+    } else if (open) {
+      if (elapsed < BLINK.minClosedMs) {
+        blinkPhase = "waiting-close";
+        closedAt = null;
+        setStatus("Blink both eyes now");
+      } else {
+        blinkPhase = "confirm-open";
+        reopenedAt = now;
+        setStatus("Blink detected — hold still", "success");
+      }
+    }
+  } else if (blinkPhase === "confirm-open") {
+    if (!open) {
+      resetBlink();
+      setStatus("Keep both eyes open — hold still");
+    } else if (now - reopenedAt >= BLINK.reopenMs) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// =========================================
+// CHALLENGE COUNTDOWN
+// =========================================
+
+const CHALLENGE_DURATION_MS = 15000;
+
+const challengeTimer = document.getElementById("challengeTimer");
+const timerProgress = document.getElementById("timerProgress");
+const timerValue = document.getElementById("timerValue");
+
+let challengeDeadline = null;
+let challengeTimerFrame = null;
+let challengeTimeoutId = null;
+let challengeTimedOut = false;
+let lastDisplayedSecond = null;
+
+function renderChallengeTimer(remainingMs) {
+  const remaining = Math.max(0, remainingMs);
+  const seconds = Math.ceil(remaining / 1000);
+
+  const fraction = Math.min(1, remaining / CHALLENGE_DURATION_MS);
+
+  // Ring gradually disappears from 100% to 0%.
+  timerProgress.style.strokeDashoffset = String((1 - fraction) * 100);
+
+  // Hide the rounded stroke tip when completely empty.
+  timerProgress.style.opacity = remaining > 0 ? "1" : "0";
+
+  if (seconds !== lastDisplayedSecond) {
+    timerValue.textContent = String(seconds);
+    lastDisplayedSecond = seconds;
+  }
+}
+
+function stopChallengeCountdown() {
+  if (challengeTimerFrame !== null) {
+    cancelAnimationFrame(challengeTimerFrame);
+    challengeTimerFrame = null;
+  }
+
+  if (challengeTimeoutId !== null) {
+    clearTimeout(challengeTimeoutId);
+    challengeTimeoutId = null;
+  }
+
+  challengeDeadline = null;
+}
+
+async function expireChallenge() {
+  if (challengeTimedOut || captured || pageClosed) return;
+
+  challengeTimedOut = true;
+
+  renderChallengeTimer(0);
+  stopCamera();
+
+  // Return to the instructions immediately.
+  cameraPage.hidden = true;
+  instructionPage.hidden = false;
+  challengeTimer.hidden = true;
+
+  // Prevent restarting while the previous inference is finishing.
+  btnReady.disabled = true;
+
+  sendHeight(true);
+
+  // Wait for initialization and any ongoing inference to finish.
+  // This also handles camera permission still being requested.
+  while (initializingCamera || detecting) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    if (pageClosed) return;
+  }
+
+  disposeDetector();
+
+  video.srcObject = null;
+  video.style.opacity = "0";
+  cameraPlaceholder.style.display = "";
+  scanLine.style.display = "";
+
+  captured = false;
+  lastVideoTime = -1;
+
+  resetBlink();
+
+  cameraStepStarted = false;
+  btnReady.disabled = false;
+
+  setCameraStatus("Camera Ready");
+  setStatus("Looking for a face...");
+
+  sendHeight(true);
+}
+
+// Check the deadline before accepting detection results.
+// This also handles timers delayed by an inactive browser tab.
+function challengeHasExpired() {
+  if (challengeTimedOut) return true;
+
+  if (challengeDeadline !== null && performance.now() >= challengeDeadline) {
+    expireChallenge();
+    return true;
+  }
+
+  return false;
+}
+
+function updateChallengeCountdown() {
+  challengeTimerFrame = null;
+
+  if (challengeDeadline === null) return;
+  if (challengeHasExpired()) return;
+
+  renderChallengeTimer(challengeDeadline - performance.now());
+
+  challengeTimerFrame = requestAnimationFrame(updateChallengeCountdown);
+}
+
+function startChallengeCountdown() {
+  stopChallengeCountdown();
+
+  challengeTimedOut = false;
+  lastDisplayedSecond = null;
+  challengeTimer.hidden = false;
+
+  challengeDeadline = performance.now() + CHALLENGE_DURATION_MS;
+
+  renderChallengeTimer(CHALLENGE_DURATION_MS);
+
+  challengeTimeoutId = setTimeout(() => {
+    challengeTimeoutId = null;
+
+    if (!challengeHasExpired() && challengeDeadline !== null) {
+      challengeTimerFrame ??= requestAnimationFrame(updateChallengeCountdown);
+    }
+  }, CHALLENGE_DURATION_MS);
+
+  challengeTimerFrame = requestAnimationFrame(updateChallengeCountdown);
+}
 
 // =========================================
 // UI
@@ -253,15 +557,15 @@ function getCameraErrorText(error) {
 }
 
 // =========================================
-// INITIALIZE TENSORFLOW.JS
+// INITIALIZE TENSORFLOW.JS / FACEMESH
 // =========================================
 
 async function initializeFaceDetector() {
   setCameraStatus("Initializing");
-  setStatus("Loading face detection...");
+  setStatus("Loading Liveness Detection Model...");
 
   try {
-    if (!tf || !faceDetection) {
+    if (!tf || !faceLandmarksDetection) {
       throw new Error("TensorFlow.js libraries failed to load.");
     }
 
@@ -287,11 +591,11 @@ async function initializeFaceDetector() {
 
     if (pageClosed) return;
 
-    faceDetector = await faceDetection.createDetector(
-      faceDetection.SupportedModels.MediaPipeFaceDetector,
+    faceDetector = await faceLandmarksDetection.createDetector(
+      faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
       {
         runtime: "tfjs",
-        modelType: "short",
+        refineLandmarks: true,
         maxFaces: MAX_FACES,
       },
     );
@@ -301,6 +605,7 @@ async function initializeFaceDetector() {
       return;
     }
 
+    startChallengeCountdown();
     await startCamera();
   } catch (error) {
     console.error("Initialization failed:", error);
@@ -308,7 +613,7 @@ async function initializeFaceDetector() {
     stopCamera();
     disposeDetector();
 
-    if (!pageClosed) {
+    if (!pageClosed && !challengeTimedOut) {
       setCameraStatus("Unavailable");
       setStatus(getCameraErrorText(error), "error");
     }
@@ -332,7 +637,7 @@ async function startCamera() {
     audio: false,
   });
 
-  if (pageClosed) {
+  if (pageClosed || challengeHasExpired()) {
     stopCamera();
     return;
   }
@@ -342,7 +647,7 @@ async function startCamera() {
 
   await video.play();
 
-  if (pageClosed) {
+  if (pageClosed || challengeHasExpired()) {
     stopCamera();
     return;
   }
@@ -351,7 +656,8 @@ async function startCamera() {
   cameraPlaceholder.style.display = "none";
   scanLine.style.display = "";
 
-  validSince = null;
+  resetBlink();
+
   captured = false;
   lastVideoTime = -1;
   running = true;
@@ -362,6 +668,7 @@ async function startCamera() {
       if (!running) return;
 
       stopCamera();
+
       setCameraStatus("Camera stopped");
       setStatus("Camera disconnected. Reload to try again.", "error");
 
@@ -386,7 +693,7 @@ async function detectFaces() {
 
   // Avoid counting time while the tab is hidden.
   if (document.hidden) {
-    validSince = null;
+    resetBlink();
     animationFrameId = requestAnimationFrame(detectFaces);
     return;
   }
@@ -406,20 +713,34 @@ async function detectFaces() {
   detecting = true;
 
   try {
-    // TensorFlow.js inference is asynchronous.
-    // Await completion before scheduling the next detection.
-    // Match the video element dimensions to the actual camera stream.
+    // Await inference before scheduling the next detection.
     video.width = video.videoWidth;
     video.height = video.videoHeight;
 
-    const faces = await faceDetector.estimateFaces(video, {
+    const epoch = visibilityEpoch;
+
+    inferenceFrame.width = video.videoWidth;
+    inferenceFrame.height = video.videoHeight;
+    inferenceContext.drawImage(video, 0, 0);
+
+    const sampledAt = performance.now();
+
+    const faces = await faceDetector.estimateFaces(inferenceFrame, {
       flipHorizontal: false,
     });
 
     if (running && !captured && !pageClosed && !document.hidden) {
-      processDetection(faces);
+      if (
+        epoch !== visibilityEpoch ||
+        performance.now() - sampledAt > BLINK.maxFrameGapMs
+      ) {
+        resetBlink();
+        setStatus("Keep both eyes open — hold still");
+      } else {
+        processDetection(faces, sampledAt);
+      }
     } else {
-      validSince = null;
+      resetBlink();
     }
   } catch (error) {
     console.error("Face detection failed:", error);
@@ -447,21 +768,22 @@ async function detectFaces() {
 // PROCESS DETECTION RESULT
 // =========================================
 
-function processDetection(faces) {
-  if (faces.length === 0) {
-    validSince = null;
-    setStatus("No face detected", "warning");
+function processDetection(faces, now) {
+  if (challengeHasExpired()) return;
+
+  const reject = (text) => {
+    resetBlink();
+    setStatus(text, "warning");
+  };
+
+  if (faces.length !== 1) {
+    reject(
+      faces.length ? "Only one face should be visible" : "No face detected",
+    );
     return;
   }
 
-  if (faces.length > 1) {
-    validSince = null;
-    setStatus("Only one face should be visible", "error");
-    return;
-  }
-
-  // TensorFlow.js returns face.box, not face.boundingBox.
-  const box = faces[0].box;
+  const { box, keypoints: points } = faces[0];
 
   if (
     !box ||
@@ -469,46 +791,104 @@ function processDetection(faces) {
     box.width <= 0 ||
     box.height <= 0
   ) {
-    validSince = null;
-    setStatus("Unable to read face position", "warning");
+    reject("Unable to read face position");
     return;
   }
 
-  const faceWidthRatio = box.width / video.videoWidth;
-  const faceHeightRatio = box.height / video.videoHeight;
+  // Convert raw coordinates to the mirrored, object-fit:cover preview.
+  const rect = video.getBoundingClientRect();
+  const guide = faceGuide.getBoundingClientRect();
 
-  if (faceWidthRatio < MIN_FACE_SIZE || faceHeightRatio < MIN_FACE_SIZE) {
-    validSince = null;
-    setStatus("Please move closer", "warning");
+  const scale = Math.max(
+    rect.width / video.videoWidth,
+    rect.height / video.videoHeight,
+  );
+
+  const offsetX = (rect.width - video.videoWidth * scale) / 2;
+
+  const offsetY = (rect.height - video.videoHeight * scale) / 2;
+
+  const cx = rect.width - ((box.xMin + box.width / 2) * scale + offsetX);
+
+  const cy = (box.yMin + box.height / 2) * scale + offsetY;
+
+  const gx = guide.left - rect.left + guide.width / 2;
+
+  const gy = guide.top - rect.top + guide.height / 2;
+
+  if (
+    box.width * scale < guide.width * 0.55 ||
+    box.height * scale < guide.height * 0.55
+  ) {
+    reject("Please move closer");
     return;
   }
 
-  const faceCenterX = box.xMin + box.width / 2;
-  const faceCenterY = box.yMin + box.height / 2;
-
-  const horizontalOffset =
-    Math.abs(faceCenterX - video.videoWidth / 2) / video.videoWidth;
-
-  const verticalOffset =
-    Math.abs(faceCenterY - video.videoHeight / 2) / video.videoHeight;
-
-  const isCentered = horizontalOffset < 0.18 && verticalOffset < 0.2;
-
-  if (!isCentered) {
-    validSince = null;
-    setStatus("Please center your face", "warning");
+  if (
+    box.width * scale > guide.width * 1.08 ||
+    box.height * scale > guide.height * 1.08
+  ) {
+    reject("Please move back slightly");
     return;
   }
 
-  const now = performance.now();
-
-  if (validSince === null) {
-    validSince = now;
+  if (
+    Math.abs(cx - gx) > guide.width * 0.14 ||
+    Math.abs(cy - gy) > guide.height * 0.14
+  ) {
+    reject("Please center your face");
+    return;
   }
 
-  setStatus("Face detected — hold still", "success");
+  const left = eyeAspectRatio(points || [], [33, 160, 158, 133, 153, 144]);
 
-  if (now - validSince >= REQUIRED_STABLE_TIME && !captured) {
+  const right = eyeAspectRatio(points || [], [362, 385, 387, 263, 373, 380]);
+
+  if (![left, right].every(Number.isFinite)) {
+    reject("Unable to read eye landmarks");
+    return;
+  }
+
+  const nose = points[1];
+  const a = points[33];
+  const b = points[263];
+
+  if (!nose || ![nose.x, nose.y].every(Number.isFinite)) {
+    reject("Unable to read eye landmarks");
+    return;
+  }
+
+  const eyeSpan = Math.abs(b.x - a.x);
+
+  if (
+    eyeSpan < 1 ||
+    Math.abs(a.y - b.y) / eyeSpan > 0.25 ||
+    Math.abs(nose.x - (a.x + b.x) / 2) / eyeSpan > 0.28
+  ) {
+    reject("Keep your face upright and look at the camera");
+    return;
+  }
+
+  // Reset on abrupt movement.
+  // This is a continuity heuristic, not identity recognition.
+  const current = {
+    x: box.xMin + box.width / 2,
+    y: box.yMin + box.height / 2,
+    width: box.width,
+  };
+
+  if (
+    previousFace &&
+    (Math.hypot(current.x - previousFace.x, current.y - previousFace.y) >
+      previousFace.width * 0.2 ||
+      Math.abs(current.width / previousFace.width - 1) > 0.2)
+  ) {
+    resetBlink();
+  }
+
+  previousFace = current;
+
+  if (advanceBlink(left, right, now) && !captured) {
     capturePhoto();
   }
 }
@@ -518,6 +898,8 @@ function processDetection(faces) {
 // =========================================
 
 function capturePhoto() {
+  if (challengeHasExpired()) return;
+
   const canvas = document.createElement("canvas");
 
   canvas.width = video.videoWidth;
@@ -532,7 +914,8 @@ function capturePhoto() {
   // Mirror the saved image to match the CSS-mirrored preview.
   context.translate(canvas.width, 0);
   context.scale(-1, 1);
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  context.drawImage(inferenceFrame, 0, 0, canvas.width, canvas.height);
 
   const image = canvas.toDataURL("image/jpeg", 0.92);
 
@@ -541,14 +924,21 @@ function capturePhoto() {
       type: "face-captured",
       photo: image,
       source: "facescan",
+
+      // Client-side interaction result, not trusted proof of liveness.
+      blinkDetected: true,
     },
     "*",
   );
 
   captured = true;
-  //   downloadCapturedImage(image);
+
+  // Uncomment to download the captured photo during testing.
+  // downloadCapturedImage(image);
+
   stopCamera();
 
+  challengeTimer.hidden = true;
   scanLine.style.display = "none";
 
   setCameraStatus("Camera stopped");
@@ -575,8 +965,10 @@ function downloadCapturedImage(image) {
 // =========================================
 
 function stopCamera() {
+  stopChallengeCountdown();
+
   running = false;
-  validSince = null;
+  resetBlink();
 
   if (animationFrameId !== null) {
     cancelAnimationFrame(animationFrameId);
@@ -599,12 +991,12 @@ function disposeDetector() {
 }
 
 document.addEventListener("visibilitychange", () => {
-  validSince = null;
+  visibilityEpoch++;
+  resetBlink();
 });
 
 window.addEventListener("pagehide", () => {
   pageClosed = true;
-
   stopCamera();
 
   // If inference is running, its finally block handles disposal.
@@ -668,10 +1060,13 @@ function sendHeight(force = false) {
 }
 
 // window.addEventListener("message", (event) => {
-//   if (event.origin !== PARENT_ORIGIN || event.source !== window.parent) {
+//   if (
+//     event.origin !== PARENT_ORIGIN ||
+//     event.source !== window.parent
+//   ) {
 //     return;
 //   }
-
+//
 //   if (event.data?.type === "request-height") {
 //     sendHeight(true);
 //   }
@@ -694,32 +1089,38 @@ if (document.fonts) {
 const instructionPage = document.getElementById("instructionPage");
 const cameraPage = document.getElementById("cameraPage");
 const btnReady = document.getElementById("btnReady");
-
 const header = document.querySelector(".header");
 const footer = document.querySelector(".footer");
 
 let cameraStepStarted = false;
+let initializingCamera = false;
 
 btnReady.addEventListener("click", async () => {
-  if (cameraStepStarted || pageClosed) return;
+  if (cameraStepStarted || initializingCamera || pageClosed) return;
 
   cameraStepStarted = true;
+  initializingCamera = true;
+
   btnReady.disabled = true;
+  challengeTimer.hidden = true;
 
   instructionPage.hidden = true;
   cameraPage.hidden = false;
 
-  // Wait for the camera section to become visible.
-  await new Promise((resolve) => requestAnimationFrame(resolve));
+  try {
+    // Wait for the camera section to become visible.
+    await new Promise((resolve) => requestAnimationFrame(resolve));
 
-  sendHeight(true);
+    if (pageClosed) return;
 
-  // Your existing function already handles initialization errors.
-  await initializeFaceDetector();
+    sendHeight(true);
 
-  sendHeight(true);
+    await initializeFaceDetector();
+  } finally {
+    initializingCamera = false;
+    sendHeight(true);
+  }
 });
-
 // =========================================
 // START — INSTRUCTIONS ONLY
 // =========================================

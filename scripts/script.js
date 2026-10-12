@@ -276,6 +276,7 @@ function eyeAspectRatio(points, indices) {
   if (width < 3) return NaN;
 
   return (distance(p[1], p[5]) + distance(p[2], p[4])) / (2 * width);
+  // ini sama aja kayak averageHeight / width
 }
 
 // =========================================
@@ -356,7 +357,7 @@ function advanceBlink(leftEAR, rightEAR, now) {
 // CHALLENGE COUNTDOWN
 // =========================================
 
-const CHALLENGE_DURATION_MS = 15000;
+const CHALLENGE_DURATION_MS = 30000;
 
 const challengeTimer = document.getElementById("challengeTimer");
 const timerProgress = document.getElementById("timerProgress");

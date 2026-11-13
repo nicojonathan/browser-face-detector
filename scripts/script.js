@@ -77,7 +77,7 @@ const translations = {
     "Kamera tidak tersedia atau sedang digunakan aplikasi lain.",
 };
 
-let currentLanguage = "en";
+let currentLanguage = "id";
 
 try {
   const savedLanguage = localStorage.getItem("facescan-language");

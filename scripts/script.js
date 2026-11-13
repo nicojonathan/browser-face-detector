@@ -77,7 +77,7 @@ const translations = {
     "Kamera tidak tersedia atau sedang digunakan aplikasi lain.",
 };
 
-let currentLanguage = "en";
+let currentLanguage = "id";
 
 try {
   const savedLanguage = localStorage.getItem("facescan-language");
@@ -99,14 +99,20 @@ function translate(text) {
 
 // Update the existing HTML instructions without changing its layout.
 // Update the existing HTML instructions without changing its layout.
+// document.querySelector(".intro p").textContent =
+//   "Position your face inside the guide. Keep your mouth closed, then open it when prompted. Your photo will be captured after your mouth opens.";
+
+// document.querySelectorAll(".instruction strong")[2].textContent =
+//   "Open your mouth when prompted";
+
+// document.querySelectorAll(".instruction strong + span")[2].textContent =
+//   "Open your mouth wide, then hold still.";
+
+// Hide liveness instructions
 document.querySelector(".intro p").textContent =
-  "Position your face inside the guide. Keep your mouth closed, then open it when prompted. Your photo will be captured after your mouth opens.";
+  "Position your face inside the guide.";
 
-document.querySelectorAll(".instruction strong")[2].textContent =
-  "Open your mouth when prompted";
-
-document.querySelectorAll(".instruction strong + span")[2].textContent =
-  "Open your mouth wide, then hold still.";
+document.querySelectorAll(".instruction")[2].style.display = "none";
 
 Object.assign(translations, {
   "Position your face inside the guide. Keep your mouth closed, then open it when prompted. Your photo will be captured after your mouth opens.":
@@ -867,7 +873,12 @@ function processDetection(faces, now) {
 
   previousFace = current;
 
-  if (advanceMouth(mar, now) && !captured) {
+  // if (advanceMouth(mar, now) && !captured) {
+  //   capturePhoto();
+  // }
+
+  // TEMPORARY BYPASS: Skip mouth liveness challenge.
+  if (!captured) {
     capturePhoto();
   }
 }

@@ -717,12 +717,22 @@ async function detectFaces() {
     });
 
     if (running && !captured && !pageClosed && !document.hidden) {
+      // if (
+      //   epoch !== visibilityEpoch ||
+      //   performance.now() - sampledAt > MOUTH.maxFrameGapMs
+      // ) {
+      //   resetMouthChallenge();
+      //   setStatus("Keep your mouth closed — hold still");
+      // } else {
+      //   processDetection(faces, sampledAt);
+      // }
+
       if (
         epoch !== visibilityEpoch ||
         performance.now() - sampledAt > MOUTH.maxFrameGapMs
       ) {
         resetMouthChallenge();
-        setStatus("Keep your mouth closed — hold still");
+        setStatus("Looking for a face...");
       } else {
         processDetection(faces, sampledAt);
       }

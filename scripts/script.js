@@ -98,30 +98,28 @@ function translate(text) {
 }
 
 // Update the existing HTML instructions without changing its layout.
+// Update the existing HTML instructions without changing its layout.
 document.querySelector(".intro p").textContent =
-  "Position your face inside the guide. Keep your eyes open, then blink when prompted. Your photo will be captured after your eyes reopen.";
+  "Position your face inside the guide. Keep your mouth closed, then open it when prompted. Your photo will be captured after your mouth opens.";
 
 document.querySelectorAll(".instruction strong")[2].textContent =
-  "Blink when prompted";
+  "Open your mouth when prompted";
 
 document.querySelectorAll(".instruction strong + span")[2].textContent =
-  "Close both eyes briefly, then open them.";
+  "Open your mouth wide, then hold still.";
 
 Object.assign(translations, {
-  "Position your face inside the guide. Keep your eyes open, then blink when prompted. Your photo will be captured after your eyes reopen.":
-    "Posisikan wajah di dalam bingkai. Buka mata, lalu berkedip saat diminta. Foto diambil setelah mata terbuka kembali.",
+  "Position your face inside the guide. Keep your mouth closed, then open it when prompted. Your photo will be captured after your mouth opens.":
+    "Posisikan wajah di dalam bingkai. Tutup mulut, lalu buka saat diminta. Foto diambil setelah mulut terbuka.",
 
-  "Blink when prompted": "Berkedip saat diminta",
-  "Close both eyes briefly, then open them.":
-    "Tutup kedua mata sebentar, lalu buka kembali.",
-  "Keep both eyes open — hold still": "Buka kedua mata — jangan bergerak",
-  "Blink both eyes now": "Kedipkan kedua mata sekarang",
-  "Open both eyes again": "Buka kembali kedua mata",
-  "Blink detected — hold still": "Kedipan terdeteksi — jangan bergerak",
-  "Please move back slightly": "Silakan mundur sedikit",
-  "Keep your face upright and look at the camera":
-    "Tegakkan wajah dan lihat ke kamera",
-  "Unable to read eye landmarks": "Titik mata tidak terbaca",
+  "Open your mouth when prompted": "Buka mulut saat diminta",
+  "Open your mouth wide, then hold still.":
+    "Buka mulut lebar, lalu jangan bergerak.",
+  "Keep your mouth closed — hold still": "Tutup mulut — jangan bergerak",
+  "Open your mouth now": "Buka mulut sekarang",
+  "Mouth open — hold still": "Mulut terbuka — jangan bergerak",
+  "Unable to read mouth landmarks": "Titik mulut tidak terbaca",
+  "Unable to read face landmarks": "Titik wajah tidak terbaca",
   "Loading Liveness Detection Model...": "Memuat Model Deteksi Liveness...",
   "Time remaining": "Waktu tersisa",
   "Seconds remaining": "Detik tersisa",
@@ -229,40 +227,37 @@ let lastVideoTime = -1;
 
 // Starting thresholds, not universal biometric constants.
 // Validate these values on your target devices.
-const BLINK = {
-  openEAR: 0.23,
-  closedEAR: 0.17,
+const MOUTH = {
+  openMAR: 0.32,
+  closedMAR: 0.15,
   stableMs: REQUIRED_STABLE_TIME,
-  minClosedMs: 60,
-  maxClosedMs: 1500,
-  reopenMs: 180,
+  minOpenMs: 180,
   challengeMs: 10000,
   maxFrameGapMs: 500,
 };
 
-let blinkPhase = "prepare";
+let mouthPhase = "prepare";
 let promptedAt = null;
-let closedAt = null;
-let reopenedAt = null;
-let lastEyeFrameAt = null;
+let openedAt = null;
+let lastMouthFrameAt = null;
 let previousFace = null;
 let visibilityEpoch = 0;
 
 const inferenceFrame = document.createElement("canvas");
 const inferenceContext = inferenceFrame.getContext("2d");
 
-function resetBlink() {
+function resetMouthChallenge() {
   validSince = null;
-  blinkPhase = "prepare";
-  promptedAt = closedAt = reopenedAt = lastEyeFrameAt = null;
+  mouthPhase = "prepare";
+  promptedAt = openedAt = lastMouthFrameAt = null;
   previousFace = null;
 }
 
 // =========================================
-// EYE ASPECT RATIO
+// MOUTH ASPECT RATIO
 // =========================================
 
-function eyeAspectRatio(points, indices) {
+function mouthAspectRatio(points, indices) {
   const p = indices.map((i) => points[i]);
 
   if (p.some((v) => !v || !Number.isFinite(v.x) || !Number.isFinite(v.y))) {
@@ -271,81 +266,66 @@ function eyeAspectRatio(points, indices) {
 
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
-  const width = distance(p[0], p[3]);
+  // [left mouth corner, right mouth corner, upper inner lip, lower inner lip]
+  const width = distance(p[0], p[1]);
 
   if (width < 3) return NaN;
 
-  return (distance(p[1], p[5]) + distance(p[2], p[4])) / (2 * width);
-  // ini sama aja kayak averageHeight / width
+  return distance(p[2], p[3]) / width;
 }
 
 // =========================================
-// BLINK STATE MACHINE
+// OPEN MOUTH STATE MACHINE
 // =========================================
 
 // Only a complete open -> closed -> open sequence can pass.
-function advanceBlink(leftEAR, rightEAR, now) {
-  if (lastEyeFrameAt !== null && now - lastEyeFrameAt > BLINK.maxFrameGapMs) {
-    resetBlink();
+function advanceMouth(mar, now) {
+  if (
+    lastMouthFrameAt !== null &&
+    now - lastMouthFrameAt > MOUTH.maxFrameGapMs
+  ) {
+    resetMouthChallenge();
   }
 
-  lastEyeFrameAt = now;
+  lastMouthFrameAt = now;
 
-  const open = leftEAR >= BLINK.openEAR && rightEAR >= BLINK.openEAR;
+  const closed = mar <= MOUTH.closedMAR;
+  const open = mar >= MOUTH.openMAR;
 
-  const closed = leftEAR <= BLINK.closedEAR && rightEAR <= BLINK.closedEAR;
-
-  if (promptedAt !== null && now - promptedAt > BLINK.challengeMs) {
-    resetBlink();
+  if (promptedAt !== null && now - promptedAt > MOUTH.challengeMs) {
+    resetMouthChallenge();
   }
 
-  if (blinkPhase === "prepare") {
-    if (!open) {
+  if (mouthPhase === "prepare") {
+    if (!closed) {
       validSince = null;
     } else if (validSince === null) {
       validSince = now;
     }
 
-    if (validSince !== null && now - validSince >= BLINK.stableMs) {
-      blinkPhase = "waiting-close";
+    if (validSince !== null && now - validSince >= MOUTH.stableMs) {
+      mouthPhase = "waiting-open";
       promptedAt = now;
     }
 
     setStatus(
-      blinkPhase === "prepare"
-        ? "Keep both eyes open — hold still"
-        : "Blink both eyes now",
+      mouthPhase === "prepare"
+        ? "Keep your mouth closed — hold still"
+        : "Open your mouth now",
     );
-  } else if (blinkPhase === "waiting-close") {
-    setStatus("Blink both eyes now");
+  } else if (mouthPhase === "waiting-open") {
+    setStatus("Open your mouth now");
 
-    if (closed) {
-      closedAt = now;
-      blinkPhase = "waiting-open";
-      setStatus("Open both eyes again");
+    if (open) {
+      openedAt = now;
+      mouthPhase = "confirm-open";
+      setStatus("Mouth open — hold still", "success");
     }
-  } else if (blinkPhase === "waiting-open") {
-    const elapsed = now - closedAt;
-
-    if (elapsed > BLINK.maxClosedMs) {
-      resetBlink();
-      setStatus("Keep both eyes open — hold still");
-    } else if (open) {
-      if (elapsed < BLINK.minClosedMs) {
-        blinkPhase = "waiting-close";
-        closedAt = null;
-        setStatus("Blink both eyes now");
-      } else {
-        blinkPhase = "confirm-open";
-        reopenedAt = now;
-        setStatus("Blink detected — hold still", "success");
-      }
-    }
-  } else if (blinkPhase === "confirm-open") {
+  } else if (mouthPhase === "confirm-open") {
     if (!open) {
-      resetBlink();
-      setStatus("Keep both eyes open — hold still");
-    } else if (now - reopenedAt >= BLINK.reopenMs) {
+      resetMouthChallenge();
+      setStatus("Keep your mouth closed — hold still");
+    } else if (now - openedAt >= MOUTH.minOpenMs) {
       return true;
     }
   }
@@ -437,7 +417,7 @@ async function expireChallenge() {
   captured = false;
   lastVideoTime = -1;
 
-  resetBlink();
+  resetMouthChallenge();
 
   cameraStepStarted = false;
   btnReady.disabled = false;
@@ -657,7 +637,7 @@ async function startCamera() {
   cameraPlaceholder.style.display = "none";
   scanLine.style.display = "";
 
-  resetBlink();
+  resetMouthChallenge();
 
   captured = false;
   lastVideoTime = -1;
@@ -694,7 +674,7 @@ async function detectFaces() {
 
   // Avoid counting time while the tab is hidden.
   if (document.hidden) {
-    resetBlink();
+    resetMouthChallenge();
     animationFrameId = requestAnimationFrame(detectFaces);
     return;
   }
@@ -733,15 +713,15 @@ async function detectFaces() {
     if (running && !captured && !pageClosed && !document.hidden) {
       if (
         epoch !== visibilityEpoch ||
-        performance.now() - sampledAt > BLINK.maxFrameGapMs
+        performance.now() - sampledAt > MOUTH.maxFrameGapMs
       ) {
-        resetBlink();
-        setStatus("Keep both eyes open — hold still");
+        resetMouthChallenge();
+        setStatus("Keep your mouth closed — hold still");
       } else {
         processDetection(faces, sampledAt);
       }
     } else {
-      resetBlink();
+      resetMouthChallenge();
     }
   } catch (error) {
     console.error("Face detection failed:", error);
@@ -773,7 +753,7 @@ function processDetection(faces, now) {
   if (challengeHasExpired()) return;
 
   const reject = (text) => {
-    resetBlink();
+    resetMouthChallenge();
     setStatus(text, "warning");
   };
 
@@ -841,12 +821,10 @@ function processDetection(faces, now) {
     return;
   }
 
-  const left = eyeAspectRatio(points || [], [33, 160, 158, 133, 153, 144]);
+  const mar = mouthAspectRatio(points || [], [61, 291, 13, 14]);
 
-  const right = eyeAspectRatio(points || [], [362, 385, 387, 263, 373, 380]);
-
-  if (![left, right].every(Number.isFinite)) {
-    reject("Unable to read eye landmarks");
+  if (!Number.isFinite(mar)) {
+    reject("Unable to read mouth landmarks");
     return;
   }
 
@@ -855,7 +833,7 @@ function processDetection(faces, now) {
   const b = points[263];
 
   if (!nose || ![nose.x, nose.y].every(Number.isFinite)) {
-    reject("Unable to read eye landmarks");
+    reject("Unable to read face landmarks");
     return;
   }
 
@@ -884,12 +862,12 @@ function processDetection(faces, now) {
       previousFace.width * 0.2 ||
       Math.abs(current.width / previousFace.width - 1) > 0.2)
   ) {
-    resetBlink();
+    resetMouthChallenge();
   }
 
   previousFace = current;
 
-  if (advanceBlink(left, right, now) && !captured) {
+  if (advanceMouth(mar, now) && !captured) {
     capturePhoto();
   }
 }
@@ -927,7 +905,7 @@ function capturePhoto() {
       source: "facescan",
 
       // Client-side interaction result, not trusted proof of liveness.
-      blinkDetected: true,
+      mouthOpened: true,
     },
     "*",
   );
@@ -969,7 +947,7 @@ function stopCamera() {
   stopChallengeCountdown();
 
   running = false;
-  resetBlink();
+  resetMouthChallenge();
 
   if (animationFrameId !== null) {
     cancelAnimationFrame(animationFrameId);
@@ -993,7 +971,7 @@ function disposeDetector() {
 
 document.addEventListener("visibilitychange", () => {
   visibilityEpoch++;
-  resetBlink();
+  resetMouthChallenge();
 });
 
 window.addEventListener("pagehide", () => {

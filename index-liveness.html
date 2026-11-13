@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Face Detection</title>
+
+    <link rel="stylesheet" href="styles/style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <!-- Header -->
+      <header class="header">
+        <div class="brand">
+          <div class="brand-icon">◉</div>
+          <div>
+            <h1>FaceScan</h1>
+            <span>By Nico Jonathan Setiawan</span>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <div
+            class="language-toggle"
+            role="group"
+            aria-label="Language / Bahasa"
+          >
+            <button type="button" data-language="en" aria-pressed="true">
+              EN
+            </button>
+            <button type="button" data-language="id" aria-pressed="false">
+              ID
+            </button>
+          </div>
+
+          <div class="status">
+            <span class="status-dot"></span>
+            Camera Ready
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <!-- Step 1: Instructions -->
+      <section class="content" id="instructionPage">
+        <div class="intro">
+          <span class="eyebrow">PHOTO CAPTURE</span>
+
+          <h2>Capture a photo of your face</h2>
+
+          <p>
+            Position your face inside the guide and look directly at the camera.
+            Your photo will be captured automatically when you are ready.
+          </p>
+        </div>
+
+        <div class="instructions">
+          <div class="instruction">
+            <div class="instruction-number">01</div>
+            <div>
+              <strong>Face the camera</strong>
+              <span>Look directly at the camera.</span>
+            </div>
+          </div>
+
+          <div class="instruction">
+            <div class="instruction-number">02</div>
+            <div>
+              <strong>Stay inside the frame</strong>
+              <span>Keep your face within the guide.</span>
+            </div>
+          </div>
+
+          <div class="instruction">
+            <div class="instruction-number">03</div>
+            <div>
+              <strong>Wait for capture</strong>
+              <span>Your photo will be captured automatically.</span>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" class="ready-button" id="btnReady">
+          I'm ready
+        </button>
+      </section>
+
+      <!-- Step 2: Camera and blink instructions -->
+      <section class="content" id="cameraPage" hidden>
+        <div class="camera-container">
+          <!-- Prominent instruction above the camera -->
+          <div
+            class="detection-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <span class="detection-icon"></span>
+            <span id="detection-message">Looking for a face...</span>
+          </div>
+
+          <!-- Countdown: shown once FaceMesh is ready -->
+          <div class="challenge-timer" id="challengeTimer" hidden>
+            <div
+              class="timer-ring"
+              role="timer"
+              aria-label="Seconds remaining"
+              aria-live="off"
+            >
+              <svg viewBox="0 0 64 64" aria-hidden="true">
+                <circle class="timer-track" cx="32" cy="32" r="27"></circle>
+
+                <circle
+                  class="timer-progress"
+                  id="timerProgress"
+                  cx="32"
+                  cy="32"
+                  r="27"
+                  pathLength="100"
+                ></circle>
+              </svg>
+
+              <span class="timer-value" id="timerValue">15</span>
+            </div>
+
+            <span class="timer-caption" id="timerCaption">
+              Time remaining
+            </span>
+          </div>
+
+          <div class="camera">
+            <video id="camera" autoplay playsinline muted></video>
+
+            <div class="camera-placeholder">
+              <div class="placeholder-icon">◉</div>
+              <span>Camera preview</span>
+            </div>
+
+            <div class="face-guide">
+              <div class="corner top-left"></div>
+              <div class="corner top-right"></div>
+              <div class="corner bottom-left"></div>
+              <div class="corner bottom-right"></div>
+
+              <div class="scan-line"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <span>Face detection runs locally in your browser.</span>
+
+        <span class="secure">
+          <span>●</span>
+          Secure
+        </span>
+      </footer>
+    </main>
+
+    <!-- TensorFlow.js runtime -->
+    <script src="scripts/tf.min.js"></script>
+
+    <!-- TensorFlow.js face detection -->
+    <script src="scripts/face-detection.min.js"></script>
+
+    <!-- Face landmarks / FaceMesh -->
+    <script src="scripts/face-landmarks-detection.min.js"></script>
+
+    <!-- Application -->
+    <script type="module" src="scripts/script.js"></script>
+  </body>
+</html>

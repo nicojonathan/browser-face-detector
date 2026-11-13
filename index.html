@@ -6,7 +6,7 @@
 
     <title>Face Detection</title>
 
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="styles/style.css" />
   </head>
   <body>
     <main class="app">
@@ -86,9 +86,49 @@
         </button>
       </section>
 
-      <!-- Step 2: Camera only -->
+      <!-- Step 2: Camera and blink instructions -->
       <section class="content" id="cameraPage" hidden>
         <div class="camera-container">
+          <!-- Prominent instruction above the camera -->
+          <div
+            class="detection-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <span class="detection-icon"></span>
+            <span id="detection-message">Looking for a face...</span>
+          </div>
+
+          <!-- Countdown: shown once FaceMesh is ready -->
+          <div class="challenge-timer" id="challengeTimer" hidden>
+            <div
+              class="timer-ring"
+              role="timer"
+              aria-label="Seconds remaining"
+              aria-live="off"
+            >
+              <svg viewBox="0 0 64 64" aria-hidden="true">
+                <circle class="timer-track" cx="32" cy="32" r="27"></circle>
+
+                <circle
+                  class="timer-progress"
+                  id="timerProgress"
+                  cx="32"
+                  cy="32"
+                  r="27"
+                  pathLength="100"
+                ></circle>
+              </svg>
+
+              <span class="timer-value" id="timerValue">15</span>
+            </div>
+
+            <span class="timer-caption" id="timerCaption">
+              Time remaining
+            </span>
+          </div>
+
           <div class="camera">
             <video id="camera" autoplay playsinline muted></video>
 
@@ -104,11 +144,6 @@
               <div class="corner bottom-right"></div>
 
               <div class="scan-line"></div>
-            </div>
-
-            <div class="detection-status" role="status">
-              <span class="detection-icon"></span>
-              <span id="detection-message">Looking for a face...</span>
             </div>
           </div>
         </div>
@@ -126,12 +161,15 @@
     </main>
 
     <!-- TensorFlow.js runtime -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <script src="scripts/tf.min.js"></script>
 
     <!-- TensorFlow.js face detection -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection@1.0.3/dist/face-detection.min.js"></script>
+    <script src="scripts/face-detection.min.js"></script>
+
+    <!-- Face landmarks / FaceMesh -->
+    <script src="scripts/face-landmarks-detection.min.js"></script>
 
     <!-- Application -->
-    <script type="module" src="script.js"></script>
+    <script type="module" src="scripts/script.js"></script>
   </body>
 </html>
